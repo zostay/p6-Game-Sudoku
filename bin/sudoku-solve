@@ -1,0 +1,16 @@
+#!/usr/bin/env perl6
+use v6;
+
+use lib ~$*PROGRAM-NAME.IO.dirname.IO.child('..').child('lib');
+use Game::Sudoku;
+
+sub MAIN(Str $file) {
+    my $puzzle = Game::Sudoku.load-puzzle($file);
+    $puzzle.solve;
+    #if $puzzle.is-complete {
+        $puzzle.show-board;
+    #}
+    #else {
+    #    $puzzle.show-possible;
+    #}
+}
