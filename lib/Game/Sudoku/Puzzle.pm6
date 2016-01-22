@@ -2,7 +2,7 @@ unit class Game::Sudoku::Puzzle;
 use v6;
 
 has Int @.board[9;9] where 1 <= * <= 9;
-has SetHash @.possibles[9;9];
+has SetHash @.candidates[9;9];
 
 method !this-square-coords($r, $c) {
     my $row-range = $r div 3 * 3 .. $r div 3 * 3 + 2;
@@ -16,38 +16,38 @@ method !the-square-coords($i) {
      self!this-square-coords($r, $c);
 }
 
-method initialize-possibles() {
-    for @.possibles -> $p is rw { $p = [1..9].SetHash }
-    self.revise-possibles;
+method initialize-candidates() {
+    for @.candidates -> $p is rw { $p = [1..9].SetHash }
+    self.revise-candidates;
     Nil
 }
 
-method revise-possibles() {
+method revise-candidates() {
     for @.board.kv -> ($r, $c), $val {
         $val or next;
 
         for 0..8 -> $rc {
-            @.possibles[$r; $rc]{ $val } = False;
-            @.possibles[$rc; $c]{ $val } = False;
+            @.candidates[$r; $rc]{ $val } = False;
+            @.candidates[$rc; $c]{ $val } = False;
         }
 
         my ($row-range, $col-range) = self!this-square-coords($r, $c);
         for cross(@$row-range, @$col-range) -> ($sr, $sc) {
-            @.possibles[$sr; $sc]{ $val } = False;
+            @.candidates[$sr; $sc]{ $val } = False;
         }
 
-        @.possibles[$r; $c] = ($val).SetHash;
+        @.candidates[$r; $c] = ($val).SetHash;
     }
 
     Nil
 }
 
-method count-possibilities() {
-    (0, |@.possibles).reduce({ $^a + $^b.elems });
+method count-all-candidates() {
+    (0, |@.candidates).reduce({ $^a + $^b.elems });
 }
 
-method infer-definite-possibilities() {
-    for @.possibles.kv -> ($r, $c), $p {
+method infer-naked-candidates() {
+    for @.candidates.kv -> ($r, $c), $p {
         $p.elems == 1 or next;
         @.board[$r; $c] = $p.pick;
     }
@@ -61,15 +61,15 @@ method by-nines() {
         my @n;
         given $mode {
             when Row {
-                @n[$_] := @.possibles[$i; $_] for 0..8;
+                @n[$_] := @.candidates[$i; $_] for 0..8;
             }
             when Col {
-                @n[$_] := @.possibles[$_; $i] for 0..8;
+                @n[$_] := @.candidates[$_; $i] for 0..8;
             }
             when Squ {
                 my ($row-range, $col-range) = self!the-square-coords($i);
                 for @$row-range X @$col-range X 0..8 -> ($r, $c, $j) {
-                    @n[$j] := @.possibles[$r;$c];
+                    @n[$j] := @.candidates[$r;$c];
                 }
             }
         }
@@ -141,7 +141,7 @@ method show-board(IO::Handle $fh = $*OUT) {
 
 method show-possible(IO::Handle $fh = $*OUT) {
     for cross(0..8, 0..2, 0..8, 0..2) -> ($row, $prow, $col, $pcol) {
-        my $set = @.possibles[$row; $col];
+        my $set = @.candidates[$row; $col];
         my $val = $prow * 3 + $pcol + 1;
         $fh.print("│") if $pcol == 0 && $col != 0;
         $fh.print($set ∋ $val ?? $val !! ' ');
@@ -154,19 +154,19 @@ method show-possible(IO::Handle $fh = $*OUT) {
 }
  
 method solve() {
-    self.initialize-possibles;
+    self.initialize-candidates;
     self.show-possible;
-    my $count = self.count-possibilities;
+    my $count = self.count-all-candidates;
     loop {
         self.infer-only-possible-place;
         self.infer-doubles-must-be-only;
-        self.infer-definite-possibilities;
-        self.revise-possibles;
+        self.infer-naked-candidates;
+        self.revise-candidates;
 
         say "#" x 150;
         self.show-possible;
 
-        my $new-count = self.count-possibilities;
+        my $new-count = self.count-all-candidates;
         last if $new-count == $count;
         $count = $new-count;
     }
