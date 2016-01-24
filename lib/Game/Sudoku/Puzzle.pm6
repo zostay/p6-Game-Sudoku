@@ -227,6 +227,42 @@ method infer-naked-triple() returns Bool {
     False;
 }
 
+method infer-naked-quad() returns Bool {
+    for self.by-nine-cells -> @cells {
+        for @cells.combinations(4) -> (($name1, $c1), ($name2, $c2), ($name3, $c3), ($name4, $c4)) {
+            for @ALL-CELL-NUMBERS.combinations(4) -> ($val1, $val2, $val3, $val4) {
+                next unless $val1 < $val2 < $val3 < $val4;
+
+                if $c1.elems <= 3 && $c2.elems <= 3 && $c3.elems <= 3 && $c4.elems <= 3
+                        && ($c1 ∪ ($val1, $val2, $val3, $val4)).elems == 4
+                        && ($c2 ∪ ($val1, $val2, $val3, $val4)).elems == 4
+                        && ($c3 ∪ ($val1, $val2, $val3, $val4)).elems == 4 
+                        && ($c4 ∪ ($val1, $val2, $val3, $val4)).elems == 4 {
+
+                    my $changed = False;
+                    for @cells.map({ .[0] }) -> $a-name {
+                        next if $a-name ~~ any($name1, $name2, $name3, $name4);
+                        next unless self.cell-candidates($a-name) ∩ ($val1, $val2, $val3, $val4);
+
+                        self.remove-candidate($a-name, $val1);
+                        self.remove-candidate($a-name, $val2);
+                        self.remove-candidate($a-name, $val3);
+                        self.remove-candidate($a-name, $val4);
+                        $changed = True;
+                    }
+
+                    if $changed {
+                        note "[$name1/$name2/$name3/$name4, $val1/$val2/$val3/$val4]: Naked Quad";
+                        return True;
+                    }
+                }
+            }
+        }
+    }
+
+    False;
+}
+
 method is-plausible() returns Bool {
     for self.by-nine-cells -> $cells {
         my $counts = bag($cells.map({ .keys }));
@@ -273,6 +309,7 @@ method solve() {
             or self.infer-naked-single
             or self.infer-naked-pair
             or self.infer-naked-triple
+            or self.infer-naked-quad
             ;
         self.revise-candidates;
 
