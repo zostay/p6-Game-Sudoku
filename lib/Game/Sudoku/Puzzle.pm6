@@ -133,14 +133,15 @@ method infer-naked-candidate() returns Bool {
     False;
 }
 
-our @ALL-NINES = [
-     |@ALL-CELL-ROWS.map(&row-names),
-     |@ALL-CELL-COLUMNS.map(&column-names),
-     |@ALL-BOX-NAMES.map(&box-names),
-];
+method by-nine-cells(:$rows = True, :$columns = True, :$boxes = True) {
+    my @nines;
+    @nines.append: @ALL-CELL-ROWS.map(&row-names)       if :$rows;
+    @nines.append: @ALL-CELL-COLUMNS.map(&column-names) if :$columns;
+    @nines.append: @ALL-BOX-NAMES.map(&box-names)       if :$boxes;
 
-method by-nine-cells() {
-    @ALL-NINES.map(-> $cells { @$cells Z @.candidates[ %CELL-INDEX{ @$cells } ] });
+    @nines.map: -> @cells { 
+        @cells Z @.candidates[ %CELL-INDEX{ @cells } ] 
+    };
 }
 
 method infer-naked-single() returns Bool {
@@ -166,7 +167,6 @@ method infer-naked-pair() returns Bool {
     for self.by-nine-cells -> @cells {
         for @cells.combinations(2) -> (($name1, $c1), ($name2, $c2)) {
             for @ALL-CELL-NUMBERS.combinations(2) -> ($val1, $val2) {
-                next unless $val1 < $val2;
 
                 if $c1.elems == 2 && $c2.elems == 2
                         && ($c1 ∩ ($val1, $val2)).elems == 2
@@ -197,7 +197,6 @@ method infer-naked-triple() returns Bool {
     for self.by-nine-cells -> @cells {
         for @cells.combinations(3) -> (($name1, $c1), ($name2, $c2), ($name3, $c3)) {
             for @ALL-CELL-NUMBERS.combinations(3) -> ($val1, $val2, $val3) {
-                next unless $val1 < $val2 < $val3;
 
                 if $c1.elems <= 3 && $c2.elems <= 3 && $c2.elems <= 3
                         && ($c1 ∪ ($val1, $val2, $val3)).elems == 3
@@ -231,7 +230,6 @@ method infer-naked-quad() returns Bool {
     for self.by-nine-cells -> @cells {
         for @cells.combinations(4) -> (($name1, $c1), ($name2, $c2), ($name3, $c3), ($name4, $c4)) {
             for @ALL-CELL-NUMBERS.combinations(4) -> ($val1, $val2, $val3, $val4) {
-                next unless $val1 < $val2 < $val3 < $val4;
 
                 if $c1.elems <= 3 && $c2.elems <= 3 && $c3.elems <= 3 && $c4.elems <= 3
                         && ($c1 ∪ ($val1, $val2, $val3, $val4)).elems == 4
@@ -261,6 +259,31 @@ method infer-naked-quad() returns Bool {
     }
 
     False;
+}
+
+method infer-hidden-pair() returns Bool {
+    for self.by-nine-cells -> @cells {
+        for @cells.combinations(2) -> (($name1, $c1), ($name2, $c2)) {
+            for @ALL-CELL-NUMBERS.combinations(2) -> ($val1, $val2) {
+                if ($c1.elems > 2 || $c2.elems > 2)
+                        && ($c1 ∩ ($val1, $val2)).elems == 2
+                        && ($c2 ∩ ($val1, $val2)).elems == 2 
+                        && not so @cells.first: -> ($a-name, $a-c) {
+                                  $a-name ne $name1
+                               && $a-name ne $name2
+                               && $a-c ∩ ($val1, $val2)
+                           } {
+
+                    self.cell-candidates($name1, ($val1, $val2).SetHash);
+                    self.cell-candidates($name2, ($val1, $val2).SetHash);
+                    note "[$name1/$name2, $val1/$val2]: Hidden Pair";
+                    return True;
+                }
+            }
+        }
+    }
+
+    False
 }
 
 method is-plausible() returns Bool {
@@ -308,6 +331,7 @@ method solve() {
             or self.infer-naked-candidate
             or self.infer-naked-single
             or self.infer-naked-pair
+            or self.infer-hidden-pair
             or self.infer-naked-triple
             or self.infer-naked-quad
             ;
