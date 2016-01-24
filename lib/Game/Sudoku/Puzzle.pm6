@@ -169,13 +169,13 @@ method infer-naked-pair() returns Bool {
                 next unless $val1 < $val2;
 
                 if $c1.elems == 2 && $c2.elems == 2
-                        && $c1 ∋ $val1 && $c1 ∋ $val2 
-                        && $c2 ∋ $val1 && $c2 ∋ $val2 {
+                        && ($c1 ∩ ($val1, $val2)).elems == 2
+                        && ($c2 ∩ ($val1, $val2)).elems == 2 {
 
                     my $changed = False;
                     for @cells.map({ .[0] }) -> $a-name {
                         next if $a-name ~~ any($name1, $name2);
-                        next unless self.cell-candidates($a-name) ∩ set($val1, $val2);
+                        next unless self.cell-candidates($a-name) ∩ ($val1, $val2);
 
                         self.remove-candidate($a-name, $val1);
                         self.remove-candidate($a-name, $val2);
@@ -193,6 +193,39 @@ method infer-naked-pair() returns Bool {
     False;
 }
 
+method infer-naked-triple() returns Bool {
+    for self.by-nine-cells -> @cells {
+        for @cells.combinations(3) -> (($name1, $c1), ($name2, $c2), ($name3, $c3)) {
+            for @ALL-CELL-NUMBERS.combinations(3) -> ($val1, $val2, $val3) {
+                next unless $val1 < $val2 < $val3;
+
+                if $c1.elems <= 3 && $c2.elems <= 3 && $c2.elems <= 3
+                        && ($c1 ∪ ($val1, $val2, $val3)).elems == 3
+                        && ($c2 ∪ ($val1, $val2, $val3)).elems == 3
+                        && ($c3 ∪ ($val1, $val2, $val3)).elems == 3 {
+
+                    my $changed = False;
+                    for @cells.map({ .[0] }) -> $a-name {
+                        next if $a-name ~~ any($name1, $name2, $name3);
+                        next unless self.cell-candidates($a-name) ∩ ($val1, $val2, $val3);
+
+                        self.remove-candidate($a-name, $val1);
+                        self.remove-candidate($a-name, $val2);
+                        self.remove-candidate($a-name, $val3);
+                        $changed = True;
+                    }
+
+                    if $changed {
+                        note "[$name1/$name2/$name3, $val1/$val2/$val3]: Naked Triple";
+                        return True;
+                    }
+                }
+            }
+        }
+    }
+
+    False;
+}
 
 method is-plausible() returns Bool {
     for self.by-nine-cells -> $cells {
@@ -239,6 +272,7 @@ method solve() {
             or self.infer-naked-candidate
             or self.infer-naked-single
             or self.infer-naked-pair
+            or self.infer-naked-triple
             ;
         self.revise-candidates;
 
