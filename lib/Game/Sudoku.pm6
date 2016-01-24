@@ -15,7 +15,8 @@ multi method load-puzzle(IO::Path $path) returns Game::Sudoku::Puzzle {
             die "$path contains illegal puzzle value '$ch' in position ($r, $c)"
                 unless 1 <= $val <= 9;
 
-            $puzzle.board[$r; $c] = $val;
+            my $i = @Game::Sudoku::Puzzle::ALL-CELL-NAMES[$r * 9 + $c];
+            $puzzle.cell-number($i, $val);
         }
     }
 
