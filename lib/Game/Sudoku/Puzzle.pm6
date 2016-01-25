@@ -51,6 +51,18 @@ method add-candidate(CellName:D $name, CellNumber:D $value) {
     Nil;
 }
 
+method except-candidates(CellName:D $name, $candidates) {
+    @.candidates[ %CELL-INDEX{ $name } ] ∖= $candidates;
+}
+
+method also-candidates(CellName:D $name, $candidates) {
+    @.candidates[ %CELL-INDEX{ $name } ] ∪= $candidates;
+}
+
+method only-candidates(CellName:D $name, $candidates) {
+    @.candidates[ %CELL-INDEX{ $name } ] ∩= $candidates;
+}
+
 method remove-candidate(CellName:D $name, CellNumber:D $value) {
     @.candidates[ %CELL-INDEX{ $name } ]{ $value } = False;
     Nil;
@@ -120,13 +132,13 @@ method count-all-candidates() {
     (0, |@.candidates).reduce({ $^a + $^b.elems });
 }
 
-method infer-naked-candidate() returns Bool {
+method infer-naked-single() returns Bool {
     for @ALL-CELL-NAMES Z @.candidates -> ($name, $candidate) {
         #dd $name, $candidate;
         $candidate.elems == 1 or next;
         without self.cell-number($name) {
             self.cell-number($name, my $val = $candidate.pick);
-            note "[$name, $val]: Naked Candidate";
+            note "[$name, $val]: Naked Single";
             return True;
         }
     }
@@ -144,7 +156,7 @@ method by-nine-cells(:$rows = True, :$columns = True, :$boxes = True) {
     };
 }
 
-method infer-naked-single() returns Bool {
+method infer-hidden-single() returns Bool {
     for self.by-nine-cells -> @cells {
         my $counts = bag(@cells.map({ .[1].keys }));
         for $counts.kv -> $k, $v {
@@ -154,7 +166,7 @@ method infer-naked-single() returns Bool {
                 without self.cell-number($name) {
                     self.cell-number($name, $k);
                     self.cell-candidates($name, ($k).SetHash);
-                    note "[$name, $k]: Naked Single";
+                    note "[$name, $k]: Hidden Single";
                     return True;
                 }
             }
@@ -286,6 +298,34 @@ method infer-hidden-pair() returns Bool {
     False
 }
 
+method infer-hidden-triple() returns Bool {
+    for self.by-nine-cells -> @cells {
+        for @cells.combinations(3) -> (($name1, $c1), ($name2, $c2), ($name3, $c3)) {
+            for @ALL-CELL-NUMBERS.combinations(3) -> ($val1, $val2, $val3) {
+                if ($c1.elems > 2 || $c2.elems > 2 || $c3.elems > 2)
+                        && $c1 ∩ ($val1, $val2, $val3)
+                        && $c2 ∩ ($val1, $val2, $val3)
+                        && $c3 ∩ ($val1, $val2, $val3)
+                        && not so @cells.first: -> ($a-name, $a-c) {
+                                  $a-name ne $name1
+                               && $a-name ne $name2
+                               && $a-name ne $name3
+                               && $a-c ∩ ($val1, $val2, $val3)
+                           } {
+
+                    self.only-candidates($name1, ($val1, $val2, $val3));
+                    self.only-candidates($name2, ($val1, $val2, $val3));
+                    self.only-candidates($name3, ($val1, $val2, $val3));
+                    note "[$name1/$name2/$name3, $val1/$val2/$val3]: Hidden Triple";
+                    return True;
+                }
+            }
+        }
+    }
+
+    False
+}
+
 method is-plausible() returns Bool {
     for self.by-nine-cells -> $cells {
         my $counts = bag($cells.map({ .keys }));
@@ -328,11 +368,12 @@ method solve() {
     #    self.show-possible;
     loop {
         last unless False
-            or self.infer-naked-candidate
             or self.infer-naked-single
+            or self.infer-hidden-single
             or self.infer-naked-pair
             or self.infer-hidden-pair
             or self.infer-naked-triple
+            or self.infer-hidden-triple
             or self.infer-naked-quad
             ;
         self.revise-candidates;
