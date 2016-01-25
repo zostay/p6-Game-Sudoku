@@ -16,12 +16,12 @@ my constant %CELL-INDEX = %(@ALL-CELL-NAMES.kv.reverse);
 
 # TODO When multi-dimensional, shaped arrays get implemented, make this awesome:
 # has CellNumber @.board{'A' .. 'I'; 1 .. 9};
-# has SetHash @.candidates{'A' .. 'I'; 1 .. 9};
+# has Set @.candidates{'A' .. 'I'; 1 .. 9};
 # Much of the infrastructure for looking up cells and such can be fixed once
 # multi-dimension arrays and shaping are full implemented.
 
 has CellNumber @.board[81];
-has SetHash @.candidates[81];
+has Set @.candidates[81];
 
 multi method cell-number(CellName:D $name) is rw returns CellNumber {
     @.board[ %CELL-INDEX{ $name } ];
@@ -37,34 +37,37 @@ method clear-cell(CellName:D $name) {
     Nil;
 }
 
-multi method cell-candidates(CellName:D $name) is rw returns SetHash {
+multi method cell-candidates(CellName:D $name) is rw returns Set {
     @.candidates[ %CELL-INDEX{ $name } ];
 }
 
-multi method cell-candidates(CellName:D $name, SetHash:D $candidates) {
+multi method cell-candidates(CellName:D $name, Set:D $candidates) {
     @.candidates[ %CELL-INDEX{ $name } ] = $candidates;
     Nil;
 }
 
 method add-candidate(CellName:D $name, CellNumber:D $value) {
-    @.candidates[ %CELL-INDEX{ $name } ]{ $value } = True;
+    self.also-candidates($name, [$value]);
     Nil;
 }
 
-method except-candidates(CellName:D $name, $candidates) {
-    @.candidates[ %CELL-INDEX{ $name } ] ∖= $candidates;
+method except-candidates(CellName:D $name, @candidates) {
+    @.candidates[ %CELL-INDEX{ $name } ] ∖= @candidates;
+    Nil
 }
 
-method also-candidates(CellName:D $name, $candidates) {
-    @.candidates[ %CELL-INDEX{ $name } ] ∪= $candidates;
+method also-candidates(CellName:D $name, @candidates) {
+    @.candidates[ %CELL-INDEX{ $name } ] ∪= @candidates;
+    Nil
 }
 
-method only-candidates(CellName:D $name, $candidates) {
-    @.candidates[ %CELL-INDEX{ $name } ] ∩= $candidates;
+method only-candidates(CellName:D $name, @candidates) {
+    @.candidates[ %CELL-INDEX{ $name } ] ∩= @candidates;
+    Nil
 }
 
 method remove-candidate(CellName:D $name, CellNumber:D $value) {
-    @.candidates[ %CELL-INDEX{ $name } ]{ $value } = False;
+    self.except-candidates($name, [$value]);
     Nil;
 }
 
@@ -102,7 +105,7 @@ my multi sub box-names-for(CellRow $row, Str $col) {
 }
 
 method initialize-candidates() {
-    for @.candidates -> $p is rw { $p = @ALL-CELL-NUMBERS.SetHash }
+    for @.candidates -> $p is rw { $p = set(@ALL-CELL-NUMBERS) }
     self.revise-candidates;
     Nil
 }
@@ -122,7 +125,7 @@ method revise-candidates() {
             self.remove-candidate($cell, $val);
         }
 
-        self.cell-candidates($name, ($val).SetHash);
+        self.cell-candidates($name, set($val));
     }
 
     Nil
@@ -165,7 +168,7 @@ method infer-hidden-single() returns Bool {
                 next unless $candidates ∋ $k;
                 without self.cell-number($name) {
                     self.cell-number($name, $k);
-                    self.cell-candidates($name, ($k).SetHash);
+                    self.cell-candidates($name, set($k));
                     note "[$name, $k]: Hidden Single";
                     return True;
                 }
@@ -286,8 +289,8 @@ method infer-hidden-pair() returns Bool {
                                && $a-c ∩ ($val1, $val2)
                            } {
 
-                    self.cell-candidates($name1, ($val1, $val2).SetHash);
-                    self.cell-candidates($name2, ($val1, $val2).SetHash);
+                    self.cell-candidates($name1, set($val1, $val2));
+                    self.cell-candidates($name2, set($val1, $val2));
                     note "[$name1/$name2, $val1/$val2]: Hidden Pair";
                     return True;
                 }
@@ -303,9 +306,10 @@ method infer-hidden-triple() returns Bool {
         for @cells.combinations(3) -> (($name1, $c1), ($name2, $c2), ($name3, $c3)) {
             for @ALL-CELL-NUMBERS.combinations(3) -> ($val1, $val2, $val3) {
                 if ($c1.elems > 2 || $c2.elems > 2 || $c3.elems > 2)
-                        && $c1 ∩ ($val1, $val2, $val3)
-                        && $c2 ∩ ($val1, $val2, $val3)
-                        && $c3 ∩ ($val1, $val2, $val3)
+                        && ($c1 ∩ ($val1, $val2, $val3)).elems >= 2
+                        && ($c2 ∩ ($val1, $val2, $val3)).elems >= 2
+                        && ($c3 ∩ ($val1, $val2, $val3)).elems >= 2
+                        && ($c1 ∪ $c2 ∪ $c3) ∖ ($val1, $val2, $val3)
                         && not so @cells.first: -> ($a-name, $a-c) {
                                   $a-name ne $name1
                                && $a-name ne $name2
@@ -317,6 +321,38 @@ method infer-hidden-triple() returns Bool {
                     self.only-candidates($name2, ($val1, $val2, $val3));
                     self.only-candidates($name3, ($val1, $val2, $val3));
                     note "[$name1/$name2/$name3, $val1/$val2/$val3]: Hidden Triple";
+                    return True;
+                }
+            }
+        }
+    }
+
+    False
+}
+
+method infer-hidden-quad() returns Bool {
+    for self.by-nine-cells -> @cells {
+        for @cells.combinations(4) -> (($name1, $c1), ($name2, $c2), ($name3, $c3), ($name4, $c4)) {
+            for @ALL-CELL-NUMBERS.combinations(4) -> ($val1, $val2, $val3, $val4) {
+                if ($c1.elems > 2 || $c2.elems > 2 || $c3.elems > 2 || $c4.elems > 2)
+                        && ($c1 ∩ ($val1, $val2, $val3, $val4)) >= 2
+                        && ($c2 ∩ ($val1, $val2, $val3, $val4)) >= 2
+                        && ($c3 ∩ ($val1, $val2, $val3, $val4)) >= 2
+                        && ($c4 ∩ ($val1, $val2, $val3, $val4)) >= 2
+                        && ($c1 ∪ $c2 ∪ $c3 ∪ $c4) ∖ ($val1, $val2, $val3, $val4)
+                        && not so @cells.first: -> ($a-name, $a-c) {
+                                  $a-name ne $name1
+                               && $a-name ne $name2
+                               && $a-name ne $name3
+                               && $a-name ne $name4
+                               && $a-c ∩ ($val1, $val2, $val3, $val4)
+                           } {
+
+                    self.only-candidates($name1, ($val1, $val2, $val3, $val4));
+                    self.only-candidates($name2, ($val1, $val2, $val3, $val4));
+                    self.only-candidates($name3, ($val1, $val2, $val3, $val4));
+                    self.only-candidates($name4, ($val1, $val2, $val3, $val4));
+                    note "[$name1/$name2/$name3/$name4, $val1/$val2/$val3/$val4]: Hidden Quad";
                     return True;
                 }
             }
