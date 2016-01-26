@@ -104,6 +104,10 @@ my multi sub box-names-for(CellRow $row, Str $col) {
     box-names-for($row, $col.Int);
 }
 
+my multi sub box-names-for(CellName $name) {
+    box-names-for(|$name.comb);
+}
+
 method initialize-candidates() {
     for @.candidates -> $p is rw { $p = set(@ALL-CELL-NUMBERS) }
     self.revise-candidates;
@@ -150,9 +154,9 @@ method infer-naked-single() returns Bool {
 
 method by-nine-cells(:$rows = True, :$columns = True, :$boxes = True) {
     my @nines;
-    @nines.append: @ALL-CELL-ROWS.map(&row-names)       if :$rows;
-    @nines.append: @ALL-CELL-COLUMNS.map(&column-names) if :$columns;
-    @nines.append: @ALL-BOX-NAMES.map(&box-names)       if :$boxes;
+    @nines.append: @ALL-CELL-ROWS.map(&row-names)       if $rows;
+    @nines.append: @ALL-CELL-COLUMNS.map(&column-names) if $columns;
+    @nines.append: @ALL-BOX-NAMES.map(&box-names)       if $boxes;
 
     @nines.map: -> @cells { 
         @cells Z @.candidates[ %CELL-INDEX{ @cells } ] 
@@ -362,6 +366,40 @@ method infer-hidden-quad() returns Bool {
     False
 }
 
+method infer-pointing-pair() returns Bool {
+    for self.by-nine-cells(:!boxes) -> @cells {
+        for 0..2, 3..5, 6..8 -> @range {
+            for @cells[@range].combinations(2) -> (($name1, $c1), ($name2, $c2)) {
+                for @ALL-CELL-NUMBERS -> $val {
+                    if $c1 ∋ $val && $c2 ∋ $val 
+                            && not so box-names-for($name1).first: -> $a-name {
+                                      $a-name ne $name1
+                                   && $a-name ne $name2
+                                   && self.cell-candidates($a-name) ∋ $val
+                               } {
+
+                        my $changed = False;
+                        for @cells -> ($a-name, $a-c) {
+                            next unless $a-c ∋ $val;
+                            next if $a-name eq $name1;
+                            next if $a-name eq $name2;
+                            self.remove-candidate($a-name, $val);
+                            $changed = True;
+                        }
+
+                        if $changed {
+                            note "[$name1/$name2, $val]: Pointing Pair";
+                            return True;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    False
+}
+
 method is-plausible() returns Bool {
     for self.by-nine-cells -> $cells {
         my $counts = bag($cells.map({ .keys }));
@@ -387,10 +425,16 @@ method show-board(IO::Handle $fh = $*OUT) {
 
 method show-possible(IO::Handle $fh = $*OUT) {
     for cross(@ALL-CELL-ROWS, 0..2, @ALL-CELL-COLUMNS, 0..2) -> ($row, $prow, $col, $pcol) {
-        my $set = self.cell-candidates($row ~ $col);
+        my $rc  = $row ~ $col;
+        my $it  = self.cell-number($rc);
+        my $set = self.cell-candidates($rc);
         my $val = $prow * 3 + $pcol + 1;
         $fh.print("│") if $pcol == 0 && $col != 1;
-        $fh.print($set ∋ $val ?? $val !! ' ');
+        $fh.print(
+               ($it // 0) == $val ?? chr(0x245f + $val)
+            !!        $set ∋ $val ?? $val
+            !!                       ' '
+        );
         if $col == 9 && $pcol == 2 {
             $fh.print("\n");
             $fh.say("───┼" x 8 ~ "───") if $prow == 2 && $row ne 'I';
@@ -401,20 +445,22 @@ method show-possible(IO::Handle $fh = $*OUT) {
 
 method solve() {
     self.initialize-candidates;
-    #    self.show-possible;
+    self.show-possible;
+    say "#" x 150;
     loop {
         last unless False
             or self.infer-naked-single
             or self.infer-hidden-single
             or self.infer-naked-pair
             or self.infer-hidden-pair
+            or self.infer-pointing-pair
             or self.infer-naked-triple
             or self.infer-hidden-triple
             or self.infer-naked-quad
             ;
         self.revise-candidates;
 
-        #        say "#" x 150;
-        #        self.show-possible;
+        self.show-possible;
+        prompt "#" x 150;
     }
 }
